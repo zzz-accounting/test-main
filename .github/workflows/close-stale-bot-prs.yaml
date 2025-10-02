@@ -1,0 +1,81 @@
+name: Close r2c-argo bot PRs after 30 days
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # daily
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  close-stale-bot-prs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close stale r2c-argo bot PRs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const DAYS = 365;  // temporarily use 1 year for testing
+            const cutoff = new Date(Date.now() - DAYS*24*60*60*1000);
+            const cutoffDate = cutoff.toISOString().split('T')[0];  // YYYY-MM-DD
+
+            const q = [
+              `repo:${owner}/${repo}`,
+              'is:pr',
+              'is:open',
+              'author:r2c-argo[bot]',
+              `created:<${cutoffDate}`
+            ].join(' ');
+
+            const gql = `
+              query($q: String!, $cursor: String) {
+                search(type: ISSUE, query: $q, first: 100, after: $cursor) {
+                  pageInfo { hasNextPage endCursor }
+                  nodes {
+                    ... on PullRequest {
+                      number
+                      title
+                      url
+                      createdAt
+                      state
+                    }
+                  }
+                }
+              }
+            `;
+
+            core.info("Search query: " + q);
+
+            // Page through results
+            let cursor = null;
+            const prs = [];
+            while (true) {
+              const res = await github.graphql(gql, { q, cursor });
+              prs.push(...res.search.nodes);
+              if (!res.search.pageInfo.hasNextPage) break;
+              cursor = res.search.pageInfo.endCursor;
+            }
+
+            if (!prs.length) {
+              core.info('No matching PRs found.');
+              return;
+            }
+
+            for (const pr of prs) {
+              // leave a comment for traceability
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: pr.number,
+                body: `This PR was opened by **r2c-argo** and has been open for at least ${DAYS} days with no merge. Closing automatically.`
+              });
+
+              // close the PR
+              await github.rest.pulls.update({
+                owner, repo, pull_number: pr.number, state: 'closed'
+              });
+
+              core.info(`Closed PR #${pr.number}: ${pr.title}`);
+            }
