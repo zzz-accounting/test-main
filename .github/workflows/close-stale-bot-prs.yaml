@@ -19,7 +19,7 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
-            const DAYS = 365;  // temporarily use 1 year for testing
+            const DAYS = -1;  // temporarily use 1 year for testing
             const cutoff = new Date(Date.now() - DAYS*24*60*60*1000);
             const cutoffDate = cutoff.toISOString().split('T')[0];  // YYYY-MM-DD
 
