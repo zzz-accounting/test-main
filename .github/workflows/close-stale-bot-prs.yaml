@@ -27,7 +27,7 @@ jobs:
               `repo:${owner}/${repo}`,
               'is:pr',
               'is:open',
-              'author:r2c-argo[bot]',
+              'author:bafulton',
               `created:<${cutoffDate}`
             ].join(' ');
 
